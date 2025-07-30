@@ -99,7 +99,7 @@ func getPieceImage(piece Piece, board []Piece, resources []fyne.Resource, window
 func updateWindowFromBoard(board []Piece, resources []fyne.Resource, window fyne.Window) { //[]fyne.CanvasObject {
 	var squares []fyne.CanvasObject
 	for i := range 64 {
-		squares = append(squares, newPieceWidget(resources[len(resources)-1], board, i%8, i/8, resources, window))
+		squares = append(squares, newPieceWidget(resources[len(resources)-2], board, i%8, i/8, resources, window))
 	}
 
 	for _, piece := range board {
@@ -107,7 +107,7 @@ func updateWindowFromBoard(board []Piece, resources []fyne.Resource, window fyne
 	}
 
 	grid := container.NewGridWithColumns(8, squares...)
-	chessboard := canvas.NewImageFromFile("images/chessboard.svg")
+	chessboard := canvas.NewImageFromResource(resources[len(resources)-1])
 	chessboard.FillMode = canvas.ImageFillOriginal
 
 	window.SetContent(container.New(layout.NewStackLayout(), chessboard, grid))
@@ -130,11 +130,13 @@ func main() {
 		}
 	}
 
-	empty_res, err := fyne.LoadResourceFromPath("images/empty.svg")
-	if err != nil {
-		log.Fatal("images/empty.svg couldn't be loaded")
+	for _, filename := range []string{"empty", "chessboard"} {
+		new_res, err := fyne.LoadResourceFromPath("images/" + filename + ".svg")
+		if err != nil {
+			log.Fatal("images/" + filename + ".svg couldn't be loaded")
+		}
+		resources = append(resources, new_res)
 	}
-	resources = append(resources, empty_res)
 
 	board := getInitialBoard()
 	updateWindowFromBoard(board, resources, window)
