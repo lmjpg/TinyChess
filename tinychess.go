@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"fyne.io/fyne/v2"
@@ -34,13 +33,13 @@ type Piece struct {
 type pieceWidget struct {
 	widget.Icon
 	Board     []Piece
+	Squares   []*pieceWidget
 	X, Y      int
 	Resources []fyne.Resource
-	Window    fyne.Window
 }
 
-func newPieceWidget(res fyne.Resource, board []Piece, x int, y int, resources []fyne.Resource, window fyne.Window) *pieceWidget {
-	widget := &pieceWidget{Board: board, X: x, Y: y, Resources: resources, Window: window}
+func newPieceWidget(res fyne.Resource, board []Piece, squares []*pieceWidget, x int, y int, resources []fyne.Resource) *pieceWidget {
+	widget := &pieceWidget{Board: board, Squares: squares, X: x, Y: y, Resources: resources}
 	widget.ExtendBaseWidget(widget)
 	widget.SetResource(res)
 
@@ -48,30 +47,53 @@ func newPieceWidget(res fyne.Resource, board []Piece, x int, y int, resources []
 }
 
 func (t *pieceWidget) Tapped(_ *fyne.PointEvent) {
-	var prevSelectedN int = -1
-	var foundPiece = false
+	var clickedN = -1
+	var prevN = -1
 
 	for n, piece := range t.Board {
-		if piece.X == t.X && piece.Y == t.Y {
-			piece.Selected = true
-			t.Board[n] = piece
-			foundPiece = true
-			fmt.Printf("Clicked %v at %v %v\n", piece.Type, piece.X, piece.Y)
-		} else if piece.Selected {
-			piece.Selected = false
-			t.Board[n] = piece
-			prevSelectedN = n
+		if t.X == piece.X && t.Y == piece.Y {
+			clickedN = n
+		}
+
+		if piece.Selected {
+			prevN = n
 		}
 	}
 
-	if !foundPiece && prevSelectedN != -1 {
-		prevX, prevY := t.Board[prevSelectedN].X, t.Board[prevSelectedN].Y
-		fmt.Printf("Moved from %v %v to %v %v\n", prevX, prevY, t.X, t.Y)
-		piece := t.Board[prevSelectedN]
-		piece.X, piece.Y = t.X, t.Y
-		t.Board[prevSelectedN] = piece
+	if clickedN == prevN && clickedN != -1 { // clicked already clicked, unselect
+		piece := t.Board[clickedN]
+		piece.Selected = false
+		t.Board[clickedN] = piece
 
-		updateWindowFromBoard(t.Board, t.Resources, t.Window)
+	} else if clickedN != -1 && prevN == -1 { // clicked with none selected, just select
+		piece := t.Board[clickedN]
+		piece.Selected = true
+		t.Board[clickedN] = piece
+
+	} else if clickedN == -1 && prevN != -1 { // clicked empty square with piece selected, move
+		piece := t.Board[prevN]
+		piece.Selected = false
+		t.Squares[piece.X+piece.Y*8].SetResource(t.Resources[len(t.Resources)-2])
+		piece.X = t.X
+		piece.Y = t.Y
+		t.Squares[piece.X+piece.Y*8].SetResource(getPieceResource(piece, t.Resources))
+		t.Board[prevN] = piece
+
+	} else if clickedN != -1 && prevN != -1 && clickedN != prevN { // taking piece
+		clickedPiece := t.Board[clickedN]
+		prevPiece := t.Board[prevN]
+		clickedPiece.Selected = false
+		prevPiece.Selected = false
+		clickedPiece.X = -1
+		clickedPiece.Y = -1
+
+		t.Squares[prevPiece.X+prevPiece.Y*8].SetResource(t.Resources[len(t.Resources)-2])
+		prevPiece.X = t.X
+		prevPiece.Y = t.Y
+		t.Squares[prevPiece.X+prevPiece.Y*8].SetResource(getPieceResource(prevPiece, t.Resources))
+
+		t.Board[clickedN] = clickedPiece
+		t.Board[prevN] = prevPiece
 	}
 }
 
@@ -91,27 +113,32 @@ func getInitialBoard() []Piece {
 	return board
 }
 
-func getPieceImage(piece Piece, board []Piece, resources []fyne.Resource, window fyne.Window) *pieceWidget {
-	res := resources[piece.Type+piece.Colour*6]
-	return newPieceWidget(res, board, piece.X, piece.Y, resources, window)
+func getPieceResource(piece Piece, resources []fyne.Resource) fyne.Resource {
+	return resources[piece.Type+piece.Colour*6]
 }
 
 func updateWindowFromBoard(board []Piece, resources []fyne.Resource, window fyne.Window) { //[]fyne.CanvasObject {
-	var squares []fyne.CanvasObject
+	var squares = make([]*pieceWidget, 64)
+
 	for i := range 64 {
-		squares = append(squares, newPieceWidget(resources[len(resources)-2], board, i%8, i/8, resources, window))
+		squares[i] = newPieceWidget(resources[len(resources)-2], board, squares, i%8, i/8, resources)
 	}
 
 	for _, piece := range board {
-		squares[piece.X+piece.Y*8] = getPieceImage(piece, board, resources, window)
+		squares[piece.X+piece.Y*8] = newPieceWidget(getPieceResource(piece, resources), board, squares, piece.X, piece.Y, resources)
 	}
 
-	grid := container.NewGridWithColumns(8, squares...)
+	// Why can't this be type cast instead?
+	var squares2 = make([]fyne.CanvasObject, len(squares))
+	for i, v := range squares {
+		squares2[i] = v
+	}
+
+	grid := container.NewGridWithColumns(8, squares2...)
 	chessboard := canvas.NewImageFromResource(resources[len(resources)-1])
 	chessboard.FillMode = canvas.ImageFillOriginal
 
 	window.SetContent(container.New(layout.NewStackLayout(), chessboard, grid))
-	// return squares
 }
 
 func main() {
