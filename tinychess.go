@@ -69,32 +69,40 @@ func (t *pieceWidget) Tapped(_ *fyne.PointEvent) {
 		piece := t.Board[clickedN]
 		piece.Selected = true
 		t.Board[clickedN] = piece
-
-	} else if clickedN == -1 && prevN != -1 { // clicked empty square with piece selected, move
-		piece := t.Board[prevN]
-		piece.Selected = false
-		t.Squares[piece.X+piece.Y*8].SetResource(t.Resources[len(t.Resources)-2])
-		piece.X = t.X
-		piece.Y = t.Y
-		t.Squares[piece.X+piece.Y*8].SetResource(getPieceResource(piece, t.Resources))
-		t.Board[prevN] = piece
-
-	} else if clickedN != -1 && prevN != -1 && clickedN != prevN { // taking piece
-		clickedPiece := t.Board[clickedN]
-		prevPiece := t.Board[prevN]
-		clickedPiece.Selected = false
-		prevPiece.Selected = false
-		clickedPiece.X = -1
-		clickedPiece.Y = -1
-
-		t.Squares[prevPiece.X+prevPiece.Y*8].SetResource(t.Resources[len(t.Resources)-2])
-		prevPiece.X = t.X
-		prevPiece.Y = t.Y
-		t.Squares[prevPiece.X+prevPiece.Y*8].SetResource(getPieceResource(prevPiece, t.Resources))
-
-		t.Board[clickedN] = clickedPiece
-		t.Board[prevN] = prevPiece
+	} else if prevN != -1 {
+		movePiece(t.X, t.Y, t.Board, prevN, clickedN, t.Squares, t.Resources)
 	}
+}
+
+func getSquareIndex(x int, y int) int {
+	return x + y*8
+}
+
+func movePiece(x int, y int, board []Piece, pieceN int, takenPieceN int, squares []*pieceWidget, resources []fyne.Resource) {
+	piece := board[pieceN]
+	piece.Selected = false
+
+	if takenPieceN != -1 {
+		removePiece(board, takenPieceN, squares)
+	}
+
+	squares[getSquareIndex(piece.X, piece.Y)].SetResource(resources[len(resources)-2])
+	piece.X = x
+	piece.Y = y
+	squares[getSquareIndex(piece.X, piece.Y)].SetResource(getPieceResource(piece, resources))
+
+	board[pieceN] = piece
+}
+
+func removePiece(board []Piece, pieceN int, squares []*pieceWidget) {
+	piece := board[pieceN]
+	i := getSquareIndex(piece.X, piece.Y)
+	resources := squares[i].Resources
+	squares[i].SetResource(resources[len(resources)-2])
+	piece.X = -1
+	piece.Y = -1
+	piece.Selected = false
+	board[pieceN] = piece
 }
 
 func getInitialBoard() []Piece {
@@ -125,7 +133,7 @@ func updateWindowFromBoard(board []Piece, resources []fyne.Resource, window fyne
 	}
 
 	for _, piece := range board {
-		squares[piece.X+piece.Y*8] = newPieceWidget(getPieceResource(piece, resources), board, squares, piece.X, piece.Y, resources)
+		squares[getSquareIndex(piece.X, piece.Y)] = newPieceWidget(getPieceResource(piece, resources), board, squares, piece.X, piece.Y, resources)
 	}
 
 	// Why can't this be type cast instead?
