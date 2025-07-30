@@ -32,10 +32,10 @@ func getInitialBoard() []Piece {
 	var pieces []Piece
 	for c := range 2 {
 		for i := range 8 {
-			pieces = append(pieces, Piece{Pawn, c, i, 1 + (c*7 - c*2)})
+			pieces = append(pieces, Piece{Pawn, c, i, 1 + (c * 5)})
 		}
 		for i, v := range []int{Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook} {
-			pieces = append(pieces, Piece{v, c, i, 0 + c*7})
+			pieces = append(pieces, Piece{v, c, i, c * 7})
 		}
 	}
 	return pieces
