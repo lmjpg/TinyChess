@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -26,8 +27,8 @@ const (
 )
 
 type Piece struct {
-	Type, Colour, X, Y int
-	Selected           bool
+	Type, Colour, X, Y            int
+	Selected, HasMoved, LastMoved bool
 }
 
 type pieceWidget struct {
@@ -82,6 +83,11 @@ func movePiece(x int, y int, board []Piece, pieceN int, takenPieceN int, squares
 	piece := board[pieceN]
 	piece.Selected = false
 
+	if !isValidMove(board, piece, x, y, takenPieceN != -1) {
+		board[pieceN] = piece
+		return
+	}
+
 	if takenPieceN != -1 {
 		removePiece(board, takenPieceN, squares)
 	}
@@ -89,6 +95,8 @@ func movePiece(x int, y int, board []Piece, pieceN int, takenPieceN int, squares
 	squares[getSquareIndex(piece.X, piece.Y)].SetResource(resources[len(resources)-2])
 	piece.X = x
 	piece.Y = y
+	piece.HasMoved = true
+	piece.LastMoved = true
 	squares[getSquareIndex(piece.X, piece.Y)].SetResource(getPieceResource(piece, resources))
 
 	board[pieceN] = piece
@@ -105,16 +113,113 @@ func removePiece(board []Piece, pieceN int, squares []*pieceWidget) {
 	board[pieceN] = piece
 }
 
+func isValidMove(board []Piece, movingPiece Piece, x int, y int, isTaking bool) bool {
+	firstTurn := true
+	var lastMovedN = -1
+
+	ax, ay, bx, by := movingPiece.X, movingPiece.Y, x, y
+	slopeAB := float64(by-ay) / float64(bx-ax)
+	distanceAB := math.Sqrt(math.Pow(float64(bx-ax), 2) + math.Pow(float64(by-ay), 2))
+
+	for n, piece := range board {
+		if piece.X == x && piece.Y == y && piece.Colour == movingPiece.Colour {
+			return false // can't take your own pieces
+		}
+
+		cx, cy := piece.X, piece.Y
+		if ax != bx && ax != cx {
+			slopeAC := float64(cy-ay) / float64(cx-ax)
+			distanceAC := math.Sqrt(math.Pow(float64(cx-ax), 2) + math.Pow(float64(cy-ay), 2))
+			if slopeAB == slopeAC && distanceAB > distanceAC {
+				return false // piece in the way
+			}
+		} else if movingPiece.X == x && movingPiece.X == piece.X && ((movingPiece.Y < piece.Y && piece.Y < y) || (y < piece.Y && piece.Y < movingPiece.Y)) {
+			return false // piece in the way (vertical)
+		}
+
+		if piece.LastMoved {
+			firstTurn = false
+			if movingPiece.Colour == piece.Colour {
+				return false
+			}
+			lastMovedN = n
+		}
+	}
+
+	if firstTurn && movingPiece.Colour != White {
+		return false
+	}
+
+	dx, dy := movingPiece.X-x, movingPiece.Y-y
+	if dx < 0 {
+		dx = -dx
+	}
+	if dy < 0 {
+		dy = -dy
+	}
+
+	// rules missing: castling, en passant, check, checkmate, stalement, three move repetition, fifty moves with no pawn moves
+	pawn_valid_not_taking := !isTaking && dx == 0 && ((dy == 1) || (dy == 2 && !movingPiece.HasMoved))
+	pawn_valid_taking := isTaking && dx == 1 && dy == 1 // en passant?
+	knight_valid := ((dx == 1 && dy == 2) || (dx == 2 && dy == 1))
+	bishop_valid := math.Abs(float64(movingPiece.Y-y)) == math.Abs(float64(movingPiece.X-x))
+	rook_valid := movingPiece.X == x || movingPiece.Y == y
+	king_valid := dx <= 1 && dy <= 1 // still needs to handle castling
+
+	switch movingPiece.Type {
+	case Pawn:
+		if !(pawn_valid_not_taking || pawn_valid_taking) {
+			return false
+		}
+
+	case Knight:
+		if !knight_valid {
+			return false
+		}
+
+	case Bishop:
+		if !bishop_valid {
+			return false
+		}
+
+	case Rook:
+		if !rook_valid {
+			return false
+		}
+
+	case Queen:
+		if !bishop_valid && !rook_valid {
+			return false
+		}
+
+	case King:
+		if !king_valid {
+			return false
+		}
+
+	default:
+		log.Fatal("Invalid piece")
+	}
+
+	if lastMovedN != -1 {
+		piece := board[lastMovedN]
+		piece.LastMoved = false
+		board[lastMovedN] = piece
+	}
+
+	return true
+}
+
 func getInitialBoard() []Piece {
 	var board []Piece = make([]Piece, 32)
 	var n = 0
 	for c := range 2 {
 		for i := range 8 {
-			board[n] = Piece{Pawn, c, i, 1 + (c * 5), false}
+			board[n] = Piece{Pawn, c, i, 1 + (c * 5), false, false, false}
 			n++
 		}
 		for i, v := range []int{Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook} {
-			board[n] = Piece{v, c, i, c * 7, false}
+			board[n] = Piece{v, c, i, c * 7, false, false, false}
 			n++
 		}
 	}
@@ -125,7 +230,7 @@ func getPieceResource(piece Piece, resources []fyne.Resource) fyne.Resource {
 	return resources[piece.Type+piece.Colour*6]
 }
 
-func updateWindowFromBoard(board []Piece, resources []fyne.Resource, window fyne.Window) { //[]fyne.CanvasObject {
+func updateWindowFromBoard(board []Piece, resources []fyne.Resource, window fyne.Window) {
 	var squares = make([]*pieceWidget, 64)
 
 	for i := range 64 {
