@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"math"
 )
 
 const (
@@ -20,19 +19,25 @@ const (
 )
 
 type Game struct {
-	Board      []Piece
-	Turn       int
-	LastMovedN int
+	Board     []Piece
+	Turn      int
+	LastMoved *Piece
 }
 
 type Position struct {
 	X, Y int
 }
 
+type Move struct {
+	Pos     Position
+	TakingN int
+}
+
 type Piece struct {
-	Type, Colour int
-	Pos          Position
-	HasMoved     bool
+	Type, Colour    int
+	Pos             Position
+	HasMoved        bool
+	PawnDoubleMoved bool
 }
 
 func getInitialGame() *Game {
@@ -40,30 +45,36 @@ func getInitialGame() *Game {
 	var n = 0
 	for c := range 2 {
 		for i := range 8 {
-			board[n] = Piece{Pawn, c, Position{i, 1 + (c * 5)}, false}
+			board[n] = Piece{Pawn, c, Position{i, 1 + (c * 5)}, false, false}
 			n++
 		}
 		for i, v := range []int{Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook} {
-			board[n] = Piece{v, c, Position{i, c * 7}, false}
+			board[n] = Piece{v, c, Position{i, c * 7}, false, false}
 			n++
 		}
 	}
 
-	game := Game{Board: board, Turn: White, LastMovedN: -1}
+	game := Game{Board: board, Turn: White, LastMoved: nil}
 	return &game
 }
 
-func movePiece(game *Game, pos Position, pieceN int, takenPieceN int) {
+func movePiece(game *Game, pos Position, pieceN int) {
 	piece := game.Board[pieceN]
 
-	if !isValidMove(game, piece, pos, takenPieceN != -1) {
+	isValid, takingN := isValidMove(game, piece, pos)
+	if !isValid {
 		return
 	}
 
-	if takenPieceN != -1 {
-		removePiece(game, takenPieceN)
+	if takingN != -1 {
+		removePiece(game, takingN)
 	}
 
+	if piece.Type == Pawn && piece.Pos.Y+2 == pos.Y {
+		piece.PawnDoubleMoved = true
+	} else {
+		piece.PawnDoubleMoved = false
+	}
 	piece.Pos = pos
 	piece.HasMoved = true
 
@@ -74,6 +85,7 @@ func movePiece(game *Game, pos Position, pieceN int, takenPieceN int) {
 	}
 
 	game.Board[pieceN] = piece
+	game.LastMoved = &piece
 }
 
 func removePiece(game *Game, pieceN int) {
@@ -82,82 +94,154 @@ func removePiece(game *Game, pieceN int) {
 	game.Board[pieceN] = piece
 }
 
-func isValidMove(game *Game, movingPiece Piece, pos Position, isTaking bool) bool {
-	ax, ay, bx, by := movingPiece.Pos.X, movingPiece.Pos.Y, pos.X, pos.Y
-	slopeAB := float64(by-ay) / float64(bx-ax)
-	distanceAB := math.Sqrt(math.Pow(float64(bx-ax), 2) + math.Pow(float64(by-ay), 2))
+func getForward(colour int, amount int) int {
+	if colour == White {
+		return -amount
+	} else {
+		return amount
+	}
+}
 
-	for _, piece := range game.Board {
-		if piece.Pos == pos && piece.Colour == movingPiece.Colour {
-			return false // can't take your own pieces
-		}
+func abs(n int) int {
+	if n >= 0 {
+		return n
+	} else {
+		return -n
+	}
+}
 
-		cx, cy := piece.Pos.X, piece.Pos.Y
-		if ax != bx && ax != cx {
-			slopeAC := float64(cy-ay) / float64(cx-ax)
-			distanceAC := math.Sqrt(math.Pow(float64(cx-ax), 2) + math.Pow(float64(cy-ay), 2))
-			if slopeAB == slopeAC && distanceAB > distanceAC {
-				return false // piece in the way
-			}
-		} else if movingPiece.Pos.X == pos.X && movingPiece.Pos.X == piece.Pos.X && ((movingPiece.Pos.Y < piece.Pos.Y && piece.Pos.Y < pos.Y) || (pos.Y < piece.Pos.Y && piece.Pos.Y < movingPiece.Pos.Y)) {
-			return false // piece in the way (vertical)
+func isValidMove(game *Game, movingPiece Piece, pos Position) (bool, int) {
+	validMoves := getValidMoves(game, movingPiece)
+	for _, validPos := range validMoves {
+		if pos == validPos.Pos {
+			return true, validPos.TakingN
 		}
 	}
+	return false, -1
+}
+
+func getValidMoves(game *Game, movingPiece Piece) []Move {
+	// prevent moves that put the current player into check:
+	// AFTER all other stuff, for each move in validMoves create a clone of the current game with that move applied
+	// then getValidMoves() for each cloned game (but with this check disabled to prevent infinite recursion)
+	// check the TakingN on each of the cloned games Moves, if any of them match the current players king, the non-clone move that led to that position is illegal
+
+	var validMoves []Move
 
 	if game.Turn != movingPiece.Colour {
-		return false // wrong colour moving
+		return validMoves
 	}
-
-	dx, dy := movingPiece.Pos.X-pos.X, movingPiece.Pos.Y-pos.Y
-	if dx < 0 {
-		dx = -dx
-	}
-	if dy < 0 {
-		dy = -dy
-	}
-
-	// rules missing: castling, en passant, check, checkmate, stalement, three move repetition, fifty moves with no pawn moves
-	pawn_valid_not_taking := !isTaking && dx == 0 && ((dy == 1) || (dy == 2 && !movingPiece.HasMoved))
-	pawn_valid_taking := isTaking && dx == 1 && dy == 1 // en passant?
-	knight_valid := ((dx == 1 && dy == 2) || (dx == 2 && dy == 1))
-	bishop_valid := dx == dy
-	rook_valid := movingPiece.Pos.X == pos.X || movingPiece.Pos.Y == pos.Y
-	king_valid := dx <= 1 && dy <= 1 // still needs to handle castling
 
 	switch movingPiece.Type {
 	case Pawn:
-		if !(pawn_valid_not_taking || pawn_valid_taking) {
-			return false
+		forward1Free := true
+		forward2Free := true
+		for n, targetPiece := range game.Board {
+			if movingPiece.Pos.X == targetPiece.Pos.X {
+				if movingPiece.Pos.Y+getForward(movingPiece.Colour, 1) == targetPiece.Pos.Y {
+					forward1Free = false // space in front blocked
+				} else if movingPiece.Pos.Y+getForward(movingPiece.Colour, 2) == targetPiece.Pos.Y {
+					forward2Free = false // space 2 in front blocked
+				}
+			} else if movingPiece.Colour != targetPiece.Colour && movingPiece.Pos.X+1 == targetPiece.Pos.X || movingPiece.Pos.X-1 == targetPiece.Pos.X {
+				if movingPiece.Pos.Y+getForward(movingPiece.Colour, 1) == targetPiece.Pos.Y {
+					validMoves = appendIfInBounds(validMoves, Move{Pos: targetPiece.Pos, TakingN: n}) // can take targetPiece
+				} else if movingPiece.Pos.Y == targetPiece.Pos.Y && game.LastMoved != nil && *game.LastMoved == targetPiece && targetPiece.PawnDoubleMoved {
+					nx, ny := targetPiece.Pos.X, targetPiece.Pos.Y+getForward(movingPiece.Colour, 1)
+					validMoves = appendIfInBounds(validMoves, Move{Pos: Position{X: nx, Y: ny}, TakingN: n}) // en passant take
+				}
+			}
+		}
+
+		if forward1Free {
+			nx, ny := movingPiece.Pos.X, movingPiece.Pos.Y+getForward(movingPiece.Colour, 1)
+			validMoves = appendIfInBounds(validMoves, Move{Pos: Position{X: nx, Y: ny}, TakingN: -1})
+		}
+		if forward1Free && forward2Free && !movingPiece.HasMoved {
+			nx, ny := movingPiece.Pos.X, movingPiece.Pos.Y+getForward(movingPiece.Colour, 2)
+			validMoves = appendIfInBounds(validMoves, Move{Pos: Position{X: nx, Y: ny}, TakingN: -1})
 		}
 
 	case Knight:
-		if !knight_valid {
-			return false
-		}
+		directions := []int{1, 2, -1, -2}
+		validMoves = appendMoves(validMoves, game, movingPiece, directions, true, false)
 
 	case Bishop:
-		if !bishop_valid {
-			return false
-		}
+		directions := []int{1, -1}
+		validMoves = appendMoves(validMoves, game, movingPiece, directions, false, true)
 
 	case Rook:
-		if !rook_valid {
-			return false
-		}
+		directions := []int{1, -1}
+		validMoves = appendMoves(validMoves, game, movingPiece, directions, false, true)
 
 	case Queen:
-		if !bishop_valid && !rook_valid {
-			return false
-		}
+		directions := []int{1, 0, -1}
+		validMoves = appendMoves(validMoves, game, movingPiece, directions, false, true)
 
 	case King:
-		if !king_valid {
-			return false
-		}
+		directions := []int{1, 0, -1}
+		validMoves = appendMoves(validMoves, game, movingPiece, directions, false, false)
 
 	default:
 		log.Fatal("Invalid piece")
 	}
+	return validMoves
+}
 
-	return true
+func appendMoves(validMoves []Move, game *Game, movingPiece Piece, directions []int, isKnight bool, continuous bool) []Move {
+	for _, i := range directions {
+		for _, j := range directions {
+			if !isKnight || abs(i) != abs(j) {
+				if continuous {
+					validMoves = appendDeltaMoveCont(validMoves, game, movingPiece, i, j)
+				} else {
+					validMoves = appendDeltaMove(validMoves, game, movingPiece, i, j)
+				}
+			}
+		}
+	}
+	return validMoves
+}
+
+func appendIfInBounds(arr []Move, el Move) []Move {
+	if el.Pos.X >= 0 && el.Pos.X <= 7 && el.Pos.Y >= 0 && el.Pos.Y <= 7 {
+		return append(arr, el)
+	}
+	return arr
+}
+
+func appendDeltaMove(validMoves []Move, game *Game, movingPiece Piece, dx int, dy int) []Move {
+	pos := Position{X: movingPiece.Pos.X + dx, Y: movingPiece.Pos.Y + dy}
+	isValid := true
+	takingN := -1
+	for n, piece := range game.Board {
+		if pos == piece.Pos {
+			if movingPiece.Colour == piece.Colour {
+				isValid = false
+			} else {
+				takingN = n
+			}
+		}
+	}
+
+	if isValid && pos != movingPiece.Pos {
+		return appendIfInBounds(validMoves, Move{Pos: pos, TakingN: takingN})
+	} else {
+		return validMoves
+	}
+}
+
+func appendDeltaMoveCont(validMoves []Move, game *Game, movingPiece Piece, dx int, dy int) []Move {
+	x, y := 0, 0
+	oldLen := -1
+
+	// continue if: the last attempt found a new move AND the last move found was not a take
+	for oldLen < len(validMoves) && !(len(validMoves) > 0 && validMoves[len(validMoves)-1].TakingN != -1) {
+		x += dx
+		y += dy
+
+		oldLen = len(validMoves)
+		validMoves = appendDeltaMove(validMoves, game, movingPiece, x, y)
+	}
+	return validMoves
 }

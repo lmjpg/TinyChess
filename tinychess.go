@@ -62,7 +62,7 @@ func (t *pieceWidget) Tapped(_ *fyne.PointEvent) {
 		t.Session.Game.Board[clickedN] = piece
 	} else if prevN != -1 {
 		t.Session.SelectedN = -1
-		movePiece(t.Session.Game, t.Pos, prevN, clickedN)
+		movePiece(t.Session.Game, t.Pos, prevN)
 		updateSquares(t.Session)
 	}
 }
