@@ -12,10 +12,10 @@ import (
 )
 
 type TinyChess struct {
-	Game      *Game
-	Squares   []*pieceWidget
-	Resources Resources
-	SelectedN int
+	Game        *Game
+	Squares     []*pieceWidget
+	Resources   Resources
+	SelectedPos Position
 }
 
 type Resources struct {
@@ -38,32 +38,19 @@ func newPieceWidget(session *TinyChess, x int, y int, res fyne.Resource) *pieceW
 }
 
 func (t *pieceWidget) Tapped(_ *fyne.PointEvent) {
-	var clickedN = -1
-	var prevN = -1
+	if t.Pos == t.Session.SelectedPos { // clicked already clicked, unselect
+		t.Session.SelectedPos = invalidPosition()
 
-	for n, piece := range t.Session.Game.Board {
-		if t.Pos.X == piece.Pos.X && t.Pos.Y == piece.Pos.Y {
-			clickedN = n
+	} else if t.Session.SelectedPos == invalidPosition() { // clicked with none selected, just select
+		_, ok := t.Session.Game.Board[t.Pos]
+		if ok {
+			t.Session.SelectedPos = t.Pos
 		}
 
-		if t.Session.SelectedN == n {
-			prevN = n
-		}
-	}
-
-	if clickedN == prevN && clickedN != -1 { // clicked already clicked, unselect
-		piece := t.Session.Game.Board[clickedN]
-		t.Session.SelectedN = -1
-		t.Session.Game.Board[clickedN] = piece
-
-	} else if clickedN != -1 && prevN == -1 { // clicked with none selected, just select
-		piece := t.Session.Game.Board[clickedN]
-		t.Session.SelectedN = clickedN
-		t.Session.Game.Board[clickedN] = piece
-	} else if prevN != -1 {
-		t.Session.SelectedN = -1
-		movePiece(t.Session.Game, t.Pos, prevN)
+	} else if t.Session.SelectedPos != invalidPosition() {
+		movePiece(t.Session.Game, t.Session.SelectedPos, t.Pos)
 		updateSquares(t.Session)
+		t.Session.SelectedPos = invalidPosition()
 	}
 }
 
@@ -78,8 +65,8 @@ func createWindowFromBoard(tinychess *TinyChess, w fyne.Window) []*pieceWidget {
 		squares[i] = newPieceWidget(tinychess, i%8, i/8, tinychess.Resources.Empty)
 	}
 
-	for _, piece := range tinychess.Game.Board {
-		squares[piece.Pos.X+piece.Pos.Y*8].SetResource(getPieceResource(piece, tinychess.Resources))
+	for pos, piece := range tinychess.Game.Board {
+		squares[pos.X+pos.Y*8].SetResource(getPieceResource(piece, tinychess.Resources))
 	}
 
 	// Why can't this be type cast instead?
@@ -99,14 +86,10 @@ func createWindowFromBoard(tinychess *TinyChess, w fyne.Window) []*pieceWidget {
 
 func updateSquares(tinychess *TinyChess) {
 	for _, square := range tinychess.Squares {
-		foundPiece := false
-		for _, piece := range tinychess.Game.Board {
-			if square.Pos == piece.Pos {
-				foundPiece = true
-				square.SetResource(getPieceResource(piece, tinychess.Resources))
-			}
-		}
-		if !foundPiece {
+		piece, ok := tinychess.Game.Board[square.Pos]
+		if ok {
+			square.SetResource(getPieceResource(piece, tinychess.Resources))
+		} else {
 			square.SetResource(tinychess.Resources.Empty)
 		}
 	}
@@ -144,7 +127,7 @@ func main() {
 		}
 	}
 
-	tinychess := TinyChess{Game: getInitialGame(), Squares: nil, Resources: resources, SelectedN: -1}
+	tinychess := TinyChess{Game: getInitialGame(), Squares: nil, Resources: resources, SelectedPos: invalidPosition()}
 
 	tinychess.Squares = createWindowFromBoard(&tinychess, w)
 
