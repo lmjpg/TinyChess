@@ -58,7 +58,7 @@ func getInitialGame() *Game {
 	return &game
 }
 
-func movePiece(game *Game, movingPiecePos Position, newPos Position) {
+func movePiece(game *Game, movingPiecePos Position, newPos Position) bool {
 	piece, ok := game.Board[movingPiecePos]
 	if !ok {
 		log.Fatalf("No piece at selected position (movePiece)\n\nPos: %v\n", movingPiecePos)
@@ -66,7 +66,7 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position) {
 
 	isValid, takingPos := isValidMove(game, movingPiecePos, newPos)
 	if !isValid {
-		return
+		return false
 	}
 
 	if takingPos != invalidPosition() {
@@ -89,6 +89,7 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position) {
 	game.Board[newPos] = piece
 	delete(game.Board, movingPiecePos)
 	game.LastMoved = &piece
+	return true
 }
 
 func getForward(colour int, amount int) int {

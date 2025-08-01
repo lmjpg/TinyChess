@@ -19,8 +19,8 @@ type TinyChess struct {
 }
 
 type Resources struct {
-	Pieces            []fyne.Resource
-	Empty, ChessBoard fyne.Resource
+	Pieces                    []fyne.Resource
+	Empty, ChessBoard, Circle fyne.Resource
 }
 
 type pieceWidget struct {
@@ -43,19 +43,28 @@ func (t *pieceWidget) Tapped(_ *fyne.PointEvent) {
 
 	} else if t.Session.SelectedPos == invalidPosition() { // clicked with none selected, just select
 		_, ok := t.Session.Game.Board[t.Pos]
-		if ok {
+		if ok && len(getValidMoves(t.Session.Game, t.Pos)) > 0 {
 			t.Session.SelectedPos = t.Pos
 		}
 
 	} else if t.Session.SelectedPos != invalidPosition() {
-		movePiece(t.Session.Game, t.Session.SelectedPos, t.Pos)
-		updateSquares(t.Session)
+		moveSuccessful := movePiece(t.Session.Game, t.Session.SelectedPos, t.Pos)
 		t.Session.SelectedPos = invalidPosition()
+		_, ok := t.Session.Game.Board[t.Pos]
+		if !moveSuccessful && ok {
+			t.Session.SelectedPos = t.Pos
+		}
 	}
+
+	updateSquares(t.Session)
 }
 
 func getPieceResource(piece Piece, resources Resources) fyne.Resource {
 	return resources.Pieces[piece.Type+piece.Colour*6]
+}
+
+func getSquareIndexFromPosition(pos Position) int {
+	return pos.X + pos.Y*8
 }
 
 func createWindowFromBoard(tinychess *TinyChess, w fyne.Window) []*pieceWidget {
@@ -66,7 +75,7 @@ func createWindowFromBoard(tinychess *TinyChess, w fyne.Window) []*pieceWidget {
 	}
 
 	for pos, piece := range tinychess.Game.Board {
-		squares[pos.X+pos.Y*8].SetResource(getPieceResource(piece, tinychess.Resources))
+		squares[getSquareIndexFromPosition(pos)].SetResource(getPieceResource(piece, tinychess.Resources))
 	}
 
 	// Why can't this be type cast instead?
@@ -93,6 +102,13 @@ func updateSquares(tinychess *TinyChess) {
 			square.SetResource(tinychess.Resources.Empty)
 		}
 	}
+
+	_, ok := tinychess.Game.Board[tinychess.SelectedPos]
+	if ok {
+		for _, move := range getValidMoves(tinychess.Game, tinychess.SelectedPos) {
+			tinychess.Squares[getSquareIndexFromPosition(move.Pos)].SetResource(tinychess.Resources.Circle)
+		}
+	}
 }
 
 func main() {
@@ -114,7 +130,7 @@ func main() {
 	var resources Resources
 	resources.Pieces = pieceResources
 
-	for _, filename := range []string{"empty", "chessboard"} {
+	for _, filename := range []string{"empty", "chessboard", "circle"} {
 		new_res, err := fyne.LoadResourceFromPath("images/" + filename + ".svg")
 		if err != nil {
 			log.Fatal("images/" + filename + ".svg couldn't be loaded")
@@ -124,6 +140,8 @@ func main() {
 			resources.Empty = new_res
 		case "chessboard":
 			resources.ChessBoard = new_res
+		case "circle":
+			resources.Circle = new_res
 		}
 	}
 
