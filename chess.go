@@ -193,9 +193,9 @@ func appendMoves(validMoves []Move, game *Game, movingPiece Piece, directions []
 		for _, j := range directions {
 			if !isKnight || abs(i) != abs(j) {
 				if continuous {
-					validMoves = appendDeltaMoveCont(validMoves, game, movingPiece, i, j)
+					validMoves = appendDirectionMoveCont(validMoves, game, movingPiece, i, j)
 				} else {
-					validMoves = appendDeltaMove(validMoves, game, movingPiece, i, j)
+					validMoves = appendDirectionMove(validMoves, game, movingPiece, i, j)
 				}
 			}
 		}
@@ -210,7 +210,7 @@ func appendIfInBounds(arr []Move, el Move) []Move {
 	return arr
 }
 
-func appendDeltaMove(validMoves []Move, game *Game, movingPiece Piece, dx int, dy int) []Move {
+func appendDirectionMove(validMoves []Move, game *Game, movingPiece Piece, dx int, dy int) []Move {
 	pos := Position{X: movingPiece.Pos.X + dx, Y: movingPiece.Pos.Y + dy}
 	isValid := true
 	takingN := -1
@@ -231,17 +231,17 @@ func appendDeltaMove(validMoves []Move, game *Game, movingPiece Piece, dx int, d
 	}
 }
 
-func appendDeltaMoveCont(validMoves []Move, game *Game, movingPiece Piece, dx int, dy int) []Move {
+func appendDirectionMoveCont(validMoves []Move, game *Game, movingPiece Piece, dx int, dy int) []Move {
 	x, y := 0, 0
 	oldLen := -1
 
 	// continue if: the last attempt found a new move AND the last move found was not a take
-	for oldLen < len(validMoves) && !(len(validMoves) > 0 && validMoves[len(validMoves)-1].TakingN != -1) {
+	for oldLen < len(validMoves) && !(len(validMoves) > 0 && x != 0 && validMoves[len(validMoves)-1].TakingN != -1) {
 		x += dx
 		y += dy
 
 		oldLen = len(validMoves)
-		validMoves = appendDeltaMove(validMoves, game, movingPiece, x, y)
+		validMoves = appendDirectionMove(validMoves, game, movingPiece, x, y)
 	}
 	return validMoves
 }
