@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"log"
 
 	"fyne.io/fyne/v2"
@@ -10,6 +11,9 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
+
+//go:embed images/*
+var content embed.FS
 
 type TinyChess struct {
 	Game        *Game
@@ -133,11 +137,13 @@ func main() {
 	var pieceResources []fyne.Resource
 	for _, colour := range []string{"black", "white"} {
 		for _, filename := range []string{"pawn", "knight", "bishop", "rook", "queen", "king"} {
-			path := "images/" + filename + "_" + colour + ".svg"
-			res, err := fyne.LoadResourceFromPath("images/" + filename + "_" + colour + ".svg")
+			name := filename + "_" + colour
+			path := "images/" + name + ".svg"
+			fileContents, err := embed.FS.ReadFile(content, path)
 			if err != nil {
 				log.Fatal(path + " couldn't be loaded")
 			}
+			res := fyne.NewStaticResource(name, fileContents)
 			pieceResources = append(pieceResources, res)
 		}
 	}
@@ -146,10 +152,11 @@ func main() {
 	resources.Pieces = pieceResources
 
 	for _, filename := range []string{"empty", "chessboard", "circle", "circle_hole"} {
-		new_res, err := fyne.LoadResourceFromPath("images/" + filename + ".svg")
+		fileContents, err := embed.FS.ReadFile(content, "images/"+filename+".svg")
 		if err != nil {
 			log.Fatal("images/" + filename + ".svg couldn't be loaded")
 		}
+		new_res := fyne.NewStaticResource(filename, fileContents)
 		switch filename {
 		case "empty":
 			resources.Empty = new_res
