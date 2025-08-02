@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"maps"
 )
 
 const (
@@ -58,15 +59,18 @@ func getInitialGame() *Game {
 	return &game
 }
 
-func movePiece(game *Game, movingPiecePos Position, newPos Position) bool {
+func movePiece(game *Game, movingPiecePos Position, newPos Position, takingPos Position, doLegalCheck bool) bool {
 	piece, ok := game.Board[movingPiecePos]
 	if !ok {
 		log.Fatalf("No piece at selected position (movePiece)\n\nPos: %v\n", movingPiecePos)
 	}
 
-	isValid, takingPos := isValidMove(game, movingPiecePos, newPos)
-	if !isValid {
-		return false
+	if doLegalCheck {
+		var isValid bool
+		isValid, takingPos = isValidMove(game, movingPiecePos, newPos)
+		if !isValid {
+			return false
+		}
 	}
 
 	if takingPos != invalidPosition() {
@@ -109,7 +113,7 @@ func abs(n int) int {
 }
 
 func isValidMove(game *Game, movingPiecePos Position, destinationPos Position) (bool, Position) {
-	validMoves := getValidMoves(game, movingPiecePos)
+	validMoves := getLegalMoves(game, movingPiecePos)
 	for _, validMove := range validMoves {
 		if destinationPos == validMove.Pos {
 			return true, validMove.TakingPos
@@ -118,12 +122,50 @@ func isValidMove(game *Game, movingPiecePos Position, destinationPos Position) (
 	return false, invalidPosition()
 }
 
-func getValidMoves(game *Game, movingPiecePos Position) []Move {
-	// prevent moves that put the current player into check:
-	// AFTER all other stuff, for each move in validMoves create a clone of the current game with that move applied
-	// then getValidMoves() for each cloned game (but with this check disabled to prevent infinite recursion)
-	// check the TakingN on each of the cloned games Moves, if any of them match the current players king, the non-clone move that led to that position is illegal
+func getLegalMoves(gameOriginal *Game, movingPiecePos Position) []Move {
+	moves := getPseudoLegalMoves(gameOriginal, movingPiecePos)
 
+	for i, moveToCheck := range moves {
+		isLegal := true
+
+		var gameClone *Game
+		gameTemp := *gameOriginal
+		gameClone = &gameTemp
+		gameClone.Board = maps.Clone(gameClone.Board)
+		movePiece(gameClone, movingPiecePos, moveToCheck.Pos, moveToCheck.TakingPos, false)
+
+		for pos := range gameClone.Board {
+			for _, moveToCheck2 := range getPseudoLegalMoves(gameClone, pos) {
+				maybeKing, maybeTaking := gameClone.Board[moveToCheck2.TakingPos]
+				if maybeTaking && maybeKing.Type == King {
+					isLegal = false
+					break
+				}
+			}
+			if !isLegal {
+				break
+			}
+		}
+
+		if !isLegal {
+			moves[i].Pos = invalidPosition()
+		}
+	}
+
+	i := 0
+	for i < len(moves) {
+		if moves[i].Pos == invalidPosition() {
+			moves[i] = moves[len(moves)-1]
+			moves = moves[:len(moves)-1]
+		} else {
+			i++
+		}
+	}
+
+	return moves
+}
+
+func getPseudoLegalMoves(game *Game, movingPiecePos Position) []Move {
 	var validMoves []Move
 	movingPiece, ok := game.Board[movingPiecePos]
 	if !ok {
@@ -238,7 +280,7 @@ func appendDirectionMoveCont(validMoves []Move, game *Game, movingPiecePos Posit
 	oldLen := -1
 
 	// continue if: the last attempt found a new move AND the last move found was not a take
-	for oldLen < len(validMoves) && !(len(validMoves) > 0 && x != 0 && validMoves[len(validMoves)-1].TakingPos != invalidPosition()) {
+	for oldLen < len(validMoves) && !(len(validMoves) > 0 && (x != 0 || y != 0) && validMoves[len(validMoves)-1].TakingPos != invalidPosition()) {
 		x += dx
 		y += dy
 

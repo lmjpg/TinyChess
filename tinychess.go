@@ -44,12 +44,12 @@ func (t *PieceWidget) Tapped(_ *fyne.PointEvent) {
 
 	} else if t.Session.SelectedPos == invalidPosition() { // clicked with none selected, just select
 		_, ok := t.Session.Game.Board[t.Pos]
-		if ok && len(getValidMoves(t.Session.Game, t.Pos)) > 0 {
+		if ok && len(getLegalMoves(t.Session.Game, t.Pos)) > 0 {
 			t.Session.SelectedPos = t.Pos
 		}
 
 	} else if t.Session.SelectedPos != invalidPosition() {
-		moveSuccessful := movePiece(t.Session.Game, t.Session.SelectedPos, t.Pos)
+		moveSuccessful := movePiece(t.Session.Game, t.Session.SelectedPos, t.Pos, invalidPosition(), true)
 		t.Session.SelectedPos = invalidPosition()
 		_, ok := t.Session.Game.Board[t.Pos]
 		if !moveSuccessful && ok {
@@ -115,7 +115,7 @@ func updateSquares(tinychess *TinyChess) {
 
 	_, ok := tinychess.Game.Board[tinychess.SelectedPos]
 	if ok {
-		for _, move := range getValidMoves(tinychess.Game, tinychess.SelectedPos) {
+		for _, move := range getLegalMoves(tinychess.Game, tinychess.SelectedPos) {
 			res := tinychess.Resources.Circle
 			_, isTakingPiece := tinychess.Game.Board[move.Pos]
 			if isTakingPiece {
