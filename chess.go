@@ -21,7 +21,7 @@ const (
 type Game struct {
 	Board     map[Position]Piece
 	Turn      int
-	LastMoved *Piece
+	LastMoved Position
 }
 
 type Position struct {
@@ -54,7 +54,7 @@ func getInitialGame() *Game {
 		}
 	}
 
-	game := Game{Board: board, Turn: White, LastMoved: nil}
+	game := Game{Board: board, Turn: White, LastMoved: invalidPosition()}
 	return &game
 }
 
@@ -88,7 +88,7 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position) bool {
 	piece.HasMoved = true
 	game.Board[newPos] = piece
 	delete(game.Board, movingPiecePos)
-	game.LastMoved = &piece
+	game.LastMoved = newPos
 	return true
 }
 
@@ -143,24 +143,22 @@ func getValidMoves(game *Game, movingPiecePos Position) []Move {
 			validMoves = appendIfInBounds(validMoves, Move{Pos: forwardPos, TakingPos: invalidPosition()})
 			forwardPos.Y += getForward(movingPiece.Colour, 1)
 			_, occupied := game.Board[forwardPos]
-			if !occupied {
+			if !occupied && !movingPiece.HasMoved {
 				validMoves = appendIfInBounds(validMoves, Move{Pos: forwardPos, TakingPos: invalidPosition()})
 			}
 		}
 
 		// taking
 		for _, i := range []int{1, -1} {
-			takingPos := Position{X: movingPiecePos.X + i, Y: movingPiecePos.Y + getForward(movingPiece.Colour, 1)}
-			_, occupied := game.Board[takingPos]
-			if occupied {
-				validMoves = appendIfInBounds(validMoves, Move{Pos: takingPos, TakingPos: takingPos})
-			}
-
-			// taking (en passant)
-			takingPosEnPassant := Position{X: movingPiecePos.X + i, Y: movingPiecePos.Y}
-			_, occupied = game.Board[takingPos]
-			if occupied {
-				validMoves = appendIfInBounds(validMoves, Move{Pos: takingPos, TakingPos: takingPosEnPassant})
+			pos := Position{X: movingPiecePos.X + i, Y: movingPiecePos.Y}
+			destPos := pos
+			destPos.Y += getForward(movingPiece.Colour, 1)
+			for _, takingPos := range []Position{destPos, pos} {
+				// if destPos != takingPos, en passant
+				takingPiece, occupied := game.Board[takingPos]
+				if occupied && movingPiece.Colour != takingPiece.Colour && (destPos == takingPos || (takingPiece.PawnDoubleMoved && takingPos == game.LastMoved)) {
+					validMoves = appendIfInBounds(validMoves, Move{Pos: destPos, TakingPos: takingPos})
+				}
 			}
 		}
 
