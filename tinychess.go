@@ -13,31 +13,32 @@ import (
 
 type TinyChess struct {
 	Game        *Game
-	Squares     []*pieceWidget
+	Squares     []*PieceWidget
+	Overlay     []*widget.Icon
 	Resources   Resources
 	SelectedPos Position
 }
 
 type Resources struct {
-	Pieces                    []fyne.Resource
-	Empty, ChessBoard, Circle fyne.Resource
+	Pieces                                []fyne.Resource
+	Empty, ChessBoard, Circle, CircleHole fyne.Resource
 }
 
-type pieceWidget struct {
+type PieceWidget struct {
 	widget.Icon
 	Session *TinyChess
 	Pos     Position
 }
 
-func newPieceWidget(session *TinyChess, x int, y int, res fyne.Resource) *pieceWidget {
-	widget := &pieceWidget{Session: session, Pos: Position{x, y}}
+func newPieceWidget(session *TinyChess, x int, y int, res fyne.Resource) *PieceWidget {
+	widget := &PieceWidget{Session: session, Pos: Position{x, y}}
 	widget.ExtendBaseWidget(widget)
 	widget.SetResource(res)
 
 	return widget
 }
 
-func (t *pieceWidget) Tapped(_ *fyne.PointEvent) {
+func (t *PieceWidget) Tapped(_ *fyne.PointEvent) {
 	if t.Pos == t.Session.SelectedPos { // clicked already clicked, unselect
 		t.Session.SelectedPos = invalidPosition()
 
@@ -67,11 +68,13 @@ func getSquareIndexFromPosition(pos Position) int {
 	return pos.X + pos.Y*8
 }
 
-func createWindowFromBoard(tinychess *TinyChess, w fyne.Window) []*pieceWidget {
-	var squares = make([]*pieceWidget, 64)
+func createWindowFromBoard(tinychess *TinyChess, w fyne.Window) ([]*PieceWidget, []*widget.Icon) {
+	var squares = make([]*PieceWidget, 64)
+	var overlay = make([]*widget.Icon, 64)
 
 	for i := range 64 {
 		squares[i] = newPieceWidget(tinychess, i%8, i/8, tinychess.Resources.Empty)
+		overlay[i] = widget.NewIcon(tinychess.Resources.Empty)
 	}
 
 	for pos, piece := range tinychess.Game.Board {
@@ -80,17 +83,20 @@ func createWindowFromBoard(tinychess *TinyChess, w fyne.Window) []*pieceWidget {
 
 	// Why can't this be type cast instead?
 	var squares2 = make([]fyne.CanvasObject, len(squares))
-	for i, v := range squares {
-		squares2[i] = v
+	var overlay2 = make([]fyne.CanvasObject, len(overlay))
+	for i := range len(squares) {
+		squares2[i] = squares[i]
+		overlay2[i] = overlay[i]
 	}
 
 	grid := container.NewGridWithColumns(8, squares2...)
+	gridOverlay := container.NewGridWithColumns(8, overlay2...)
 	chessboard := canvas.NewImageFromResource(tinychess.Resources.ChessBoard)
 	chessboard.FillMode = canvas.ImageFillOriginal
 
-	w.SetContent(container.New(layout.NewStackLayout(), chessboard, grid))
+	w.SetContent(container.New(layout.NewStackLayout(), chessboard, grid, gridOverlay))
 
-	return squares
+	return squares, overlay
 }
 
 func updateSquares(tinychess *TinyChess) {
@@ -103,10 +109,19 @@ func updateSquares(tinychess *TinyChess) {
 		}
 	}
 
+	for _, overlay := range tinychess.Overlay {
+		overlay.SetResource(tinychess.Resources.Empty)
+	}
+
 	_, ok := tinychess.Game.Board[tinychess.SelectedPos]
 	if ok {
 		for _, move := range getValidMoves(tinychess.Game, tinychess.SelectedPos) {
-			tinychess.Squares[getSquareIndexFromPosition(move.Pos)].SetResource(tinychess.Resources.Circle)
+			res := tinychess.Resources.Circle
+			_, isTakingPiece := tinychess.Game.Board[move.Pos]
+			if isTakingPiece {
+				res = tinychess.Resources.CircleHole
+			}
+			tinychess.Overlay[getSquareIndexFromPosition(move.Pos)].SetResource(res)
 		}
 	}
 }
@@ -130,7 +145,7 @@ func main() {
 	var resources Resources
 	resources.Pieces = pieceResources
 
-	for _, filename := range []string{"empty", "chessboard", "circle"} {
+	for _, filename := range []string{"empty", "chessboard", "circle", "circle_hole"} {
 		new_res, err := fyne.LoadResourceFromPath("images/" + filename + ".svg")
 		if err != nil {
 			log.Fatal("images/" + filename + ".svg couldn't be loaded")
@@ -142,12 +157,14 @@ func main() {
 			resources.ChessBoard = new_res
 		case "circle":
 			resources.Circle = new_res
+		case "circle_hole":
+			resources.CircleHole = new_res
 		}
 	}
 
-	tinychess := TinyChess{Game: getInitialGame(), Squares: nil, Resources: resources, SelectedPos: invalidPosition()}
+	tinychess := TinyChess{Game: getInitialGame(), Squares: nil, Overlay: nil, Resources: resources, SelectedPos: invalidPosition()}
 
-	tinychess.Squares = createWindowFromBoard(&tinychess, w)
+	tinychess.Squares, tinychess.Overlay = createWindowFromBoard(&tinychess, w)
 
 	w.Resize(fyne.NewSize(600, 600))
 	w.ShowAndRun()
