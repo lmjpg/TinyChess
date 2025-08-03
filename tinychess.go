@@ -20,7 +20,7 @@ type TinyChess struct {
 	Squares     []*PieceWidget
 	Overlay     []*widget.Icon
 	Resources   Resources
-	SelectedPos Position
+	SelectedPos *Position
 }
 
 type Resources struct {
@@ -43,21 +43,21 @@ func newPieceWidget(session *TinyChess, x int, y int, res fyne.Resource) *PieceW
 }
 
 func (t *PieceWidget) Tapped(_ *fyne.PointEvent) {
-	if t.Pos == t.Session.SelectedPos { // clicked already clicked, unselect
-		t.Session.SelectedPos = invalidPosition()
+	if t.Session.SelectedPos != nil && t.Pos == *t.Session.SelectedPos { // clicked already clicked, unselect
+		t.Session.SelectedPos = nil
 
-	} else if t.Session.SelectedPos == invalidPosition() { // clicked with none selected, just select
+	} else if t.Session.SelectedPos == nil { // clicked with none selected, just select
 		_, ok := t.Session.Game.Board[t.Pos]
 		if ok && len(getLegalMoves(t.Session.Game, t.Pos)) > 0 {
-			t.Session.SelectedPos = t.Pos
+			t.Session.SelectedPos = &t.Pos
 		}
 
-	} else if t.Session.SelectedPos != invalidPosition() {
-		moveSuccessful := movePiece(t.Session.Game, t.Session.SelectedPos, t.Pos, invalidPosition(), true)
-		t.Session.SelectedPos = invalidPosition()
+	} else if t.Session.SelectedPos != nil {
+		moveSuccessful := movePiece(t.Session.Game, *t.Session.SelectedPos, t.Pos, nil, true)
+		t.Session.SelectedPos = nil
 		_, ok := t.Session.Game.Board[t.Pos]
 		if !moveSuccessful && ok {
-			t.Session.SelectedPos = t.Pos
+			t.Session.SelectedPos = &t.Pos
 		}
 	}
 
@@ -121,15 +121,17 @@ func updateSquares(tinychess *TinyChess) {
 		}
 	}
 
-	_, ok := tinychess.Game.Board[tinychess.SelectedPos]
-	if ok {
-		for _, move := range getLegalMoves(tinychess.Game, tinychess.SelectedPos) {
-			res := tinychess.Resources.Circle
-			_, isTakingPiece := tinychess.Game.Board[move.Pos]
-			if isTakingPiece {
-				res = tinychess.Resources.CircleHole
+	if tinychess.SelectedPos != nil {
+		_, ok := tinychess.Game.Board[*tinychess.SelectedPos]
+		if ok {
+			for _, move := range getLegalMoves(tinychess.Game, *tinychess.SelectedPos) {
+				res := tinychess.Resources.Circle
+				_, isTakingPiece := tinychess.Game.Board[move.Pos]
+				if isTakingPiece {
+					res = tinychess.Resources.CircleHole
+				}
+				tinychess.Overlay[getSquareIndexFromPosition(move.Pos)].SetResource(res)
 			}
-			tinychess.Overlay[getSquareIndexFromPosition(move.Pos)].SetResource(res)
 		}
 	}
 }
@@ -175,7 +177,7 @@ func main() {
 		}
 	}
 
-	tinychess := TinyChess{Game: getInitialGame(), Squares: nil, Overlay: nil, Resources: resources, SelectedPos: invalidPosition()}
+	tinychess := TinyChess{Game: getInitialGame(), Squares: nil, Overlay: nil, Resources: resources, SelectedPos: nil}
 
 	tinychess.Squares, tinychess.Overlay = createWindowFromBoard(&tinychess, w)
 

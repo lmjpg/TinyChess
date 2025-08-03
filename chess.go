@@ -22,7 +22,7 @@ const (
 type Game struct {
 	Board     map[Position]Piece
 	Turn      int
-	LastMoved Position
+	LastMoved *Position
 	Checkmate bool
 }
 
@@ -32,17 +32,13 @@ type Position struct {
 
 type Move struct {
 	Pos       Position
-	TakingPos Position
+	TakingPos *Position
 }
 
 type Piece struct {
 	Type, Colour    int
 	HasMoved        bool
 	PawnDoubleMoved bool
-}
-
-func invalidPosition() Position {
-	return Position{X: -1, Y: -1}
 }
 
 func getInitialGame() *Game {
@@ -56,11 +52,11 @@ func getInitialGame() *Game {
 		}
 	}
 
-	game := Game{Board: board, Turn: White, LastMoved: invalidPosition(), Checkmate: false}
+	game := Game{Board: board, Turn: White, LastMoved: nil, Checkmate: false}
 	return &game
 }
 
-func movePiece(game *Game, movingPiecePos Position, newPos Position, takingPos Position, doLegalCheck bool) bool {
+func movePiece(game *Game, movingPiecePos Position, newPos Position, takingPos *Position, doLegalCheck bool) bool {
 	piece, ok := game.Board[movingPiecePos]
 	if !ok {
 		log.Fatalf("No piece at selected position (movePiece)\n\nPos: %v\n", movingPiecePos)
@@ -77,8 +73,8 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, takingPos P
 		}
 	}
 
-	if takingPos != invalidPosition() {
-		delete(game.Board, takingPos)
+	if takingPos != nil {
+		delete(game.Board, *takingPos)
 	}
 
 	if piece.Type == Pawn && movingPiecePos.Y+2 == newPos.Y {
@@ -90,7 +86,7 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, takingPos P
 	piece.HasMoved = true
 	game.Board[newPos] = piece
 	delete(game.Board, movingPiecePos)
-	game.LastMoved = newPos
+	game.LastMoved = &newPos
 
 	isCheckmate := false
 	if doLegalCheck {
@@ -134,22 +130,24 @@ func abs(n int) int {
 	}
 }
 
-func isValidMove(game *Game, movingPiecePos Position, destinationPos Position) (bool, Position) {
+func isValidMove(game *Game, movingPiecePos Position, destinationPos Position) (bool, *Position) {
 	validMoves := getLegalMoves(game, movingPiecePos)
 	for _, validMove := range validMoves {
 		if destinationPos == validMove.Pos {
 			return true, validMove.TakingPos
 		}
 	}
-	return false, invalidPosition()
+	return false, nil
 }
 
 func isKingAttacked(game *Game) bool {
 	for pos := range game.Board {
-		for _, moveToCheck2 := range getPseudoLegalMoves(game, pos) {
-			maybeKing, maybeTaking := game.Board[moveToCheck2.TakingPos]
-			if maybeTaking && maybeKing.Type == King {
-				return true
+		for _, moveToCheck := range getPseudoLegalMoves(game, pos) {
+			if moveToCheck.TakingPos != nil {
+				maybeKing, maybeTaking := game.Board[*moveToCheck.TakingPos]
+				if maybeTaking && maybeKing.Type == King {
+					return true
+				}
 			}
 		}
 	}
@@ -159,7 +157,9 @@ func isKingAttacked(game *Game) bool {
 func getLegalMoves(gameOriginal *Game, movingPiecePos Position) []Move {
 	moves := getPseudoLegalMoves(gameOriginal, movingPiecePos)
 
-	for i, moveToCheck := range moves {
+	i := 0
+	for i < len(moves) {
+		moveToCheck := moves[i]
 
 		var gameClone *Game
 		gameTemp := *gameOriginal
@@ -167,16 +167,7 @@ func getLegalMoves(gameOriginal *Game, movingPiecePos Position) []Move {
 		gameClone.Board = maps.Clone(gameClone.Board)
 		movePiece(gameClone, movingPiecePos, moveToCheck.Pos, moveToCheck.TakingPos, false)
 
-		isLegal := !isKingAttacked(gameClone)
-
-		if !isLegal {
-			moves[i].Pos = invalidPosition()
-		}
-	}
-
-	i := 0
-	for i < len(moves) {
-		if moves[i].Pos == invalidPosition() {
+		if isKingAttacked(gameClone) {
 			moves[i] = moves[len(moves)-1]
 			moves = moves[:len(moves)-1]
 		} else {
@@ -204,11 +195,11 @@ func getPseudoLegalMoves(game *Game, movingPiecePos Position) []Move {
 		forwardPos := Position{X: movingPiecePos.X, Y: movingPiecePos.Y + getForward(movingPiece.Colour, 1)}
 		_, occupied := game.Board[forwardPos]
 		if !occupied {
-			validMoves = appendIfInBounds(validMoves, Move{Pos: forwardPos, TakingPos: invalidPosition()})
+			validMoves = appendIfInBounds(validMoves, Move{Pos: forwardPos, TakingPos: nil})
 			forwardPos.Y += getForward(movingPiece.Colour, 1)
 			_, occupied := game.Board[forwardPos]
 			if !occupied && !movingPiece.HasMoved {
-				validMoves = appendIfInBounds(validMoves, Move{Pos: forwardPos, TakingPos: invalidPosition()})
+				validMoves = appendIfInBounds(validMoves, Move{Pos: forwardPos, TakingPos: nil})
 			}
 		}
 
@@ -220,8 +211,8 @@ func getPseudoLegalMoves(game *Game, movingPiecePos Position) []Move {
 			for _, takingPos := range []Position{destPos, pos} {
 				// if destPos != takingPos, en passant
 				takingPiece, occupied := game.Board[takingPos]
-				if occupied && movingPiece.Colour != takingPiece.Colour && (destPos == takingPos || (takingPiece.PawnDoubleMoved && takingPos == game.LastMoved)) {
-					validMoves = appendIfInBounds(validMoves, Move{Pos: destPos, TakingPos: takingPos})
+				if occupied && movingPiece.Colour != takingPiece.Colour && (destPos == takingPos || (takingPiece.PawnDoubleMoved && takingPos == *game.LastMoved)) {
+					validMoves = appendIfInBounds(validMoves, Move{Pos: destPos, TakingPos: &takingPos})
 				}
 			}
 		}
@@ -278,10 +269,10 @@ func appendDirectionMove(validMoves []Move, game *Game, movingPiecePos Position,
 	pos := Position{X: movingPiecePos.X + dx, Y: movingPiecePos.Y + dy}
 
 	takingPiece, ok := game.Board[pos]
-	takingPos := invalidPosition()
+	var takingPos *Position = nil
 	isValid := pos != movingPiecePos
 	if ok {
-		takingPos = pos
+		takingPos = &pos
 		movingPiece, ok := game.Board[movingPiecePos]
 		if !ok {
 			log.Fatalf("No piece at position (appendDirectionMove)\nPos: %v\n", movingPiecePos)
@@ -302,7 +293,7 @@ func appendDirectionMoveCont(validMoves []Move, game *Game, movingPiecePos Posit
 	oldLen := -1
 
 	// continue if: the last attempt found a new move AND the last move found was not a take
-	for oldLen < len(validMoves) && !(len(validMoves) > 0 && (x != 0 || y != 0) && validMoves[len(validMoves)-1].TakingPos != invalidPosition()) {
+	for oldLen < len(validMoves) && !(len(validMoves) > 0 && (x != 0 || y != 0) && validMoves[len(validMoves)-1].TakingPos != nil) {
 		x += dx
 		y += dy
 
