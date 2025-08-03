@@ -24,8 +24,8 @@ type TinyChess struct {
 }
 
 type Resources struct {
-	Pieces                                []fyne.Resource
-	Empty, ChessBoard, Circle, CircleHole fyne.Resource
+	Pieces                                           []fyne.Resource
+	Empty, ChessBoard, Circle, CircleHole, CircleRed fyne.Resource
 }
 
 type PieceWidget struct {
@@ -104,6 +104,10 @@ func createWindowFromBoard(tinychess *TinyChess, w fyne.Window) ([]*PieceWidget,
 }
 
 func updateSquares(tinychess *TinyChess) {
+	for _, overlay := range tinychess.Overlay {
+		overlay.SetResource(tinychess.Resources.Empty)
+	}
+
 	for _, square := range tinychess.Squares {
 		piece, ok := tinychess.Game.Board[square.Pos]
 		if ok {
@@ -111,10 +115,10 @@ func updateSquares(tinychess *TinyChess) {
 		} else {
 			square.SetResource(tinychess.Resources.Empty)
 		}
-	}
 
-	for _, overlay := range tinychess.Overlay {
-		overlay.SetResource(tinychess.Resources.Empty)
+		if ok && tinychess.Game.Checkmate && piece.Type == King && piece.Colour == tinychess.Game.Turn {
+			tinychess.Overlay[getSquareIndexFromPosition(square.Pos)].SetResource(tinychess.Resources.CircleRed)
+		}
 	}
 
 	_, ok := tinychess.Game.Board[tinychess.SelectedPos]
@@ -151,7 +155,7 @@ func main() {
 	var resources Resources
 	resources.Pieces = pieceResources
 
-	for _, filename := range []string{"empty", "chessboard", "circle", "circle_hole"} {
+	for _, filename := range []string{"empty", "chessboard", "circle", "circle_hole", "circle_red"} {
 		fileContents, err := embed.FS.ReadFile(content, "images/"+filename+".svg")
 		if err != nil {
 			log.Fatal("images/" + filename + ".svg couldn't be loaded")
@@ -166,6 +170,8 @@ func main() {
 			resources.Circle = new_res
 		case "circle_hole":
 			resources.CircleHole = new_res
+		case "circle_red":
+			resources.CircleRed = new_res
 		}
 	}
 

@@ -23,6 +23,7 @@ type Game struct {
 	Board     map[Position]Piece
 	Turn      int
 	LastMoved Position
+	Checkmate bool
 }
 
 type Position struct {
@@ -55,7 +56,7 @@ func getInitialGame() *Game {
 		}
 	}
 
-	game := Game{Board: board, Turn: White, LastMoved: invalidPosition()}
+	game := Game{Board: board, Turn: White, LastMoved: invalidPosition(), Checkmate: false}
 	return &game
 }
 
@@ -66,6 +67,9 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, takingPos P
 	}
 
 	if doLegalCheck {
+		if game.Checkmate {
+			return false
+		}
 		var isValid bool
 		isValid, takingPos = isValidMove(game, movingPiecePos, newPos)
 		if !isValid {
@@ -83,16 +87,34 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, takingPos P
 		piece.PawnDoubleMoved = false
 	}
 
+	piece.HasMoved = true
+	game.Board[newPos] = piece
+	delete(game.Board, movingPiecePos)
+	game.LastMoved = newPos
+
+	isCheckmate := false
+	if doLegalCheck {
+		isCheckmate = isKingAttacked(game)
+	}
+
 	if game.Turn == White {
 		game.Turn = Black
 	} else {
 		game.Turn = White
 	}
 
-	piece.HasMoved = true
-	game.Board[newPos] = piece
-	delete(game.Board, movingPiecePos)
-	game.LastMoved = newPos
+	if doLegalCheck {
+		for pos := range game.Board {
+			if len(getLegalMoves(game, pos)) > 0 {
+				isCheckmate = false
+			}
+		}
+	}
+
+	if isCheckmate {
+		game.Checkmate = true
+	}
+
 	return true
 }
 
@@ -122,11 +144,22 @@ func isValidMove(game *Game, movingPiecePos Position, destinationPos Position) (
 	return false, invalidPosition()
 }
 
+func isKingAttacked(game *Game) bool {
+	for pos := range game.Board {
+		for _, moveToCheck2 := range getPseudoLegalMoves(game, pos) {
+			maybeKing, maybeTaking := game.Board[moveToCheck2.TakingPos]
+			if maybeTaking && maybeKing.Type == King {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func getLegalMoves(gameOriginal *Game, movingPiecePos Position) []Move {
 	moves := getPseudoLegalMoves(gameOriginal, movingPiecePos)
 
 	for i, moveToCheck := range moves {
-		isLegal := true
 
 		var gameClone *Game
 		gameTemp := *gameOriginal
@@ -134,18 +167,7 @@ func getLegalMoves(gameOriginal *Game, movingPiecePos Position) []Move {
 		gameClone.Board = maps.Clone(gameClone.Board)
 		movePiece(gameClone, movingPiecePos, moveToCheck.Pos, moveToCheck.TakingPos, false)
 
-		for pos := range gameClone.Board {
-			for _, moveToCheck2 := range getPseudoLegalMoves(gameClone, pos) {
-				maybeKing, maybeTaking := gameClone.Board[moveToCheck2.TakingPos]
-				if maybeTaking && maybeKing.Type == King {
-					isLegal = false
-					break
-				}
-			}
-			if !isLegal {
-				break
-			}
-		}
+		isLegal := !isKingAttacked(gameClone)
 
 		if !isLegal {
 			moves[i].Pos = invalidPosition()
