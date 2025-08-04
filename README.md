@@ -9,7 +9,7 @@ go run .
 ```
 
 ## Todo
-Implement castling, stalement, three move repetition, fifty moves with no pawn moves.
+Implement castling, promotion, stalement, three move repetition, fifty moves with no pawn moves.
 
 ## Credits
 [Chess board SVG based on Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Chess_Board.svg)  
