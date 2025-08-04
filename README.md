@@ -1,5 +1,5 @@
 # TinyChess
-TinyChess is a simple chess board.
+TinyChess is a simple chess game.
 
 ## Running
 ```
@@ -9,7 +9,7 @@ go run .
 ```
 
 ## Todo
-Implement promotion, stalement, three move repetition, fifty moves with no pawn moves.
+Implement promotion, three move repetition, fifty moves with no pawn moves.
 
 ## Credits
 [Chess board SVG based on Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Chess_Board.svg)  
