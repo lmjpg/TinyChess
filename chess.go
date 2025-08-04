@@ -31,8 +31,10 @@ type Position struct {
 }
 
 type Move struct {
-	Pos       Position
-	TakingPos *Position
+	Pos            Position
+	TakingPos      *Position
+	CastleStartPos *Position
+	CastleEndPos   *Position
 }
 
 type Piece struct {
@@ -56,7 +58,7 @@ func getInitialGame() *Game {
 	return &game
 }
 
-func movePiece(game *Game, movingPiecePos Position, newPos Position, takingPos *Position, doLegalCheck bool) bool {
+func movePiece(game *Game, movingPiecePos Position, newPos Position, move *Move, doLegalCheck bool) bool {
 	piece, ok := game.Board[movingPiecePos]
 	if !ok {
 		log.Fatalf("No piece at selected position (movePiece)\n\nPos: %v\n", movingPiecePos)
@@ -67,14 +69,14 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, takingPos *
 			return false
 		}
 		var isValid bool
-		isValid, takingPos = isValidMove(game, movingPiecePos, newPos)
+		isValid, move = isValidMove(game, movingPiecePos, newPos)
 		if !isValid {
 			return false
 		}
 	}
 
-	if takingPos != nil {
-		delete(game.Board, *takingPos)
+	if move != nil && move.TakingPos != nil {
+		delete(game.Board, *move.TakingPos)
 	}
 
 	if piece.Type == Pawn && movingPiecePos.Y+2 == newPos.Y {
@@ -93,11 +95,7 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, takingPos *
 		isCheckmate = isKingAttacked(game)
 	}
 
-	if game.Turn == White {
-		game.Turn = Black
-	} else {
-		game.Turn = White
-	}
+	changeTurn(game)
 
 	if doLegalCheck {
 		for pos := range game.Board {
@@ -111,7 +109,20 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, takingPos *
 		game.Checkmate = true
 	}
 
+	if move != nil && move.CastleStartPos != nil && move.CastleEndPos != nil {
+		changeTurn(game)
+		movePiece(game, *move.CastleStartPos, *move.CastleEndPos, nil, false)
+	}
+
 	return true
+}
+
+func changeTurn(game *Game) {
+	if game.Turn == White {
+		game.Turn = Black
+	} else {
+		game.Turn = White
+	}
 }
 
 func getForward(colour int, amount int) int {
@@ -130,11 +141,17 @@ func abs(n int) int {
 	}
 }
 
-func isValidMove(game *Game, movingPiecePos Position, destinationPos Position) (bool, *Position) {
+func cloneGame(gameOriginal *Game) *Game {
+	gameClone := *gameOriginal
+	gameClone.Board = maps.Clone(gameClone.Board)
+	return &gameClone
+}
+
+func isValidMove(game *Game, movingPiecePos Position, destinationPos Position) (bool, *Move) {
 	validMoves := getLegalMoves(game, movingPiecePos)
 	for _, validMove := range validMoves {
 		if destinationPos == validMove.Pos {
-			return true, validMove.TakingPos
+			return true, &validMove
 		}
 	}
 	return false, nil
@@ -161,13 +178,22 @@ func getLegalMoves(gameOriginal *Game, movingPiecePos Position) []Move {
 	for i < len(moves) {
 		moveToCheck := moves[i]
 
-		var gameClone *Game
-		gameTemp := *gameOriginal
-		gameClone = &gameTemp
-		gameClone.Board = maps.Clone(gameClone.Board)
-		movePiece(gameClone, movingPiecePos, moveToCheck.Pos, moveToCheck.TakingPos, false)
+		gameClone := cloneGame(gameOriginal)
+		movePiece(gameClone, movingPiecePos, moveToCheck.Pos, &moveToCheck, false)
 
-		if isKingAttacked(gameClone) {
+		// if castling, check if the king is moving out of check or through check
+		invalidCastle := false
+		if moveToCheck.CastleEndPos != nil {
+			gameClone2 := cloneGame(gameOriginal)
+			gameClone2.Board[*moveToCheck.CastleEndPos] = gameClone2.Board[movingPiecePos]
+			if gameClone2.Board[*moveToCheck.CastleEndPos].Type != King {
+				log.Fatalf("A non-king piece is trying to castle: %v %v %v\n", movingPiecePos, gameClone2.Board[movingPiecePos], moveToCheck)
+			}
+			changeTurn(gameClone2)
+			invalidCastle = isKingAttacked(gameClone2)
+		}
+
+		if invalidCastle || isKingAttacked(gameClone) {
 			moves[i] = moves[len(moves)-1]
 			moves = moves[:len(moves)-1]
 		} else {
@@ -237,6 +263,34 @@ func getPseudoLegalMoves(game *Game, movingPiecePos Position) []Move {
 		directions := []int{1, 0, -1}
 		validMoves = appendMoves(validMoves, game, movingPiecePos, directions, movingPiece.Type, false)
 
+		// castling
+		if !movingPiece.HasMoved {
+			for _, dir := range []int{1, -1} {
+				rookPos := Position{X: ((dir + 1) / 2) * 7, Y: movingPiecePos.Y}
+				rook, ok := game.Board[rookPos]
+				if ok && rook.Type == Rook && !rook.HasMoved {
+					canCastle := true
+					checkPos := Position{X: movingPiecePos.X + dir, Y: movingPiecePos.Y}
+					for checkPos.X != rookPos.X {
+						_, occupied := game.Board[checkPos]
+						if occupied {
+							canCastle = false
+							break
+						}
+						checkPos.X += dir
+						if !inBounds(checkPos) {
+							log.Fatalf("%v is out of bounds, King Position is %v, Rook Position is %v\n", checkPos, movingPiecePos, rookPos)
+						}
+					}
+					if canCastle {
+						kingNewPos := Position{X: movingPiecePos.X + dir*2, Y: movingPiecePos.Y}
+						rookNewPos := Position{X: movingPiecePos.X + dir*1, Y: movingPiecePos.Y}
+						validMoves = appendIfInBounds(validMoves, Move{Pos: kingNewPos, TakingPos: nil, CastleStartPos: &rookPos, CastleEndPos: &rookNewPos})
+					}
+				}
+			}
+		}
+
 	default:
 		log.Fatalf("Invalid piece (getValidMoves)\nType: %v, Pos %v\n", movingPiece.Type, movingPiecePos)
 	}
@@ -258,8 +312,12 @@ func appendMoves(validMoves []Move, game *Game, movingPiecePos Position, directi
 	return validMoves
 }
 
+func inBounds(pos Position) bool {
+	return pos.X >= 0 && pos.X <= 7 && pos.Y >= 0 && pos.Y <= 7
+}
+
 func appendIfInBounds(arr []Move, el Move) []Move {
-	if el.Pos.X >= 0 && el.Pos.X <= 7 && el.Pos.Y >= 0 && el.Pos.Y <= 7 {
+	if inBounds(el.Pos) {
 		return append(arr, el)
 	}
 	return arr
