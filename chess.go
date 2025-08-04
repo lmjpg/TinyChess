@@ -89,6 +89,13 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, move *Move,
 	piece.HasMoved = true
 	game.Board[newPos] = piece
 	delete(game.Board, movingPiecePos)
+
+	if move != nil && move.CastleStartPos != nil && move.CastleEndPos != nil {
+		movePiece(game, *move.CastleStartPos, *move.CastleEndPos, nil, false)
+		changeTurn(game)
+		println(game.Checkmate)
+	}
+
 	game.LastMoved = &newPos
 
 	isInCheck := false
@@ -110,11 +117,6 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, move *Move,
 			game.Checkmate = isInCheck
 			game.Draw = !isInCheck
 		}
-	}
-
-	if move != nil && move.CastleStartPos != nil && move.CastleEndPos != nil {
-		changeTurn(game)
-		movePiece(game, *move.CastleStartPos, *move.CastleEndPos, nil, false)
 	}
 
 	return true
