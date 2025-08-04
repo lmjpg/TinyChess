@@ -24,6 +24,7 @@ type Game struct {
 	Turn      int
 	LastMoved *Position
 	Checkmate bool
+	Draw      bool
 }
 
 type Position struct {
@@ -54,7 +55,7 @@ func getInitialGame() *Game {
 		}
 	}
 
-	game := Game{Board: board, Turn: White, LastMoved: nil, Checkmate: false}
+	game := Game{Board: board, Turn: White, LastMoved: nil, Checkmate: false, Draw: false}
 	return &game
 }
 
@@ -90,23 +91,25 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, move *Move,
 	delete(game.Board, movingPiecePos)
 	game.LastMoved = &newPos
 
-	isCheckmate := false
+	isInCheck := false
 	if doLegalCheck {
-		isCheckmate = isKingAttacked(game)
+		isInCheck = isKingAttacked(game)
 	}
 
 	changeTurn(game)
 
 	if doLegalCheck {
+		gameIsOver := true
 		for pos := range game.Board {
 			if len(getLegalMoves(game, pos)) > 0 {
-				isCheckmate = false
+				gameIsOver = false
 			}
 		}
-	}
 
-	if isCheckmate {
-		game.Checkmate = true
+		if gameIsOver {
+			game.Checkmate = isInCheck
+			game.Draw = !isInCheck
+		}
 	}
 
 	if move != nil && move.CastleStartPos != nil && move.CastleEndPos != nil {
