@@ -20,11 +20,12 @@ const (
 )
 
 type Game struct {
-	Board     map[Position]Piece
-	Turn      int
-	LastMoved *Position
-	Checkmate bool
-	Draw      bool
+	Board           map[Position]Piece
+	Turn            int
+	LastMoved       *Position
+	Checkmate       bool
+	Draw            bool
+	NoPawnMoveCount int
 }
 
 type Position struct {
@@ -55,11 +56,15 @@ func getInitialGame() *Game {
 		}
 	}
 
-	game := Game{Board: board, Turn: White, LastMoved: nil, Checkmate: false, Draw: false}
+	game := Game{Board: board, Turn: White, LastMoved: nil, Checkmate: false, Draw: false, NoPawnMoveCount: 0}
 	return &game
 }
 
 func movePiece(game *Game, movingPiecePos Position, newPos Position, move *Move, doLegalCheck bool) bool {
+	if move != nil && doLegalCheck {
+		log.Fatalf("movePiece should only recieve a Move if it has already been checked for legality, otherwise use Positions.\n%v", move)
+	}
+
 	piece, ok := game.Board[movingPiecePos]
 	if !ok {
 		log.Fatalf("No piece at selected position (movePiece)\n\nPos: %v\n", movingPiecePos)
@@ -115,6 +120,18 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, move *Move,
 		if gameIsOver {
 			game.Checkmate = isInCheck
 			game.Draw = !isInCheck
+		} else {
+			if piece.Type == Pawn {
+				game.NoPawnMoveCount = 0
+			} else {
+				game.NoPawnMoveCount++
+
+				// the 50 move rule refers to full moves (both sides make a move)
+				// but this is counting half moves (only one side moves) so 100 is used instead
+				if game.NoPawnMoveCount == 100 {
+					game.Draw = true
+				}
+			}
 		}
 	}
 
@@ -176,6 +193,11 @@ func isKingAttacked(game *Game) bool {
 }
 
 func getLegalMoves(gameOriginal *Game, movingPiecePos Position) []Move {
+	if gameOriginal.Checkmate || gameOriginal.Draw {
+		var move []Move
+		return move
+	}
+
 	moves := getPseudoLegalMoves(gameOriginal, movingPiecePos)
 
 	i := 0
