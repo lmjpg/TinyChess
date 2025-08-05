@@ -26,6 +26,7 @@ type Game struct {
 	Checkmate       bool
 	Draw            bool
 	NoPawnMoveCount int
+	DrawMoveHistory []map[Position]Piece
 }
 
 type Position struct {
@@ -56,7 +57,7 @@ func getInitialGame() *Game {
 		}
 	}
 
-	game := Game{Board: board, Turn: White, LastMoved: nil, Checkmate: false, Draw: false, NoPawnMoveCount: 0}
+	game := Game{Board: board, Turn: White, LastMoved: nil, Checkmate: false, Draw: false, NoPawnMoveCount: 0, DrawMoveHistory: make([]map[Position]Piece, 0)}
 	return &game
 }
 
@@ -121,6 +122,7 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, move *Move,
 			game.Checkmate = isInCheck
 			game.Draw = !isInCheck
 		} else {
+			// fifty-move rule
 			if piece.Type == Pawn {
 				game.NoPawnMoveCount = 0
 			} else {
@@ -131,6 +133,24 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, move *Move,
 				if game.NoPawnMoveCount == 100 {
 					game.Draw = true
 				}
+			}
+
+			// three-move repetition
+			boardCount := 1
+			for _, boardToCheck := range game.DrawMoveHistory {
+				if maps.Equal(game.Board, boardToCheck) {
+					boardCount++
+				}
+				if boardCount == 3 {
+					game.Draw = true
+					break
+				}
+			}
+
+			if move.TakingPos != nil || piece.Type == Pawn {
+				game.DrawMoveHistory = make([]map[Position]Piece, 0) // taking/moving a pawn is not reversible, so the board history can be reset
+			} else {
+				game.DrawMoveHistory = append(game.DrawMoveHistory, maps.Clone(game.Board))
 			}
 		}
 	}
