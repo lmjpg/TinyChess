@@ -80,7 +80,7 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, move *Move,
 		delete(game.Board, *move.TakingPos)
 	}
 
-	if piece.Type == Pawn && movingPiecePos.Y+2 == newPos.Y {
+	if piece.Type == Pawn && movingPiecePos.Y+getForward(piece.Colour, 2) == newPos.Y {
 		piece.PawnDoubleMoved = true
 	} else {
 		piece.PawnDoubleMoved = false
