@@ -93,7 +93,6 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, move *Move,
 	if move != nil && move.CastleStartPos != nil && move.CastleEndPos != nil {
 		movePiece(game, *move.CastleStartPos, *move.CastleEndPos, nil, false)
 		changeTurn(game)
-		println(game.Checkmate)
 	}
 
 	game.LastMoved = &newPos
