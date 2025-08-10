@@ -153,6 +153,10 @@ func movePiece(game *Game, movingPiecePos Position, newPos Position, move *Move,
 				game.DrawMoveHistory = append(game.DrawMoveHistory, maps.Clone(game.Board))
 			}
 		}
+
+		if game.Checkmate || game.Draw {
+			changeTurn(game) // 2nd call to changeTurn, cancels out the 1st
+		}
 	}
 
 	return true

@@ -43,21 +43,26 @@ func newPieceWidget(session *TinyChess, x int, y int, res fyne.Resource) *PieceW
 }
 
 func (t *PieceWidget) Tapped(_ *fyne.PointEvent) {
-	if t.Session.SelectedPos != nil && t.Pos == *t.Session.SelectedPos { // clicked already clicked, unselect
+	clickedPos := t.Pos
+	if t.Session.Game.Turn == Black {
+		clickedPos.Y = 7 - clickedPos.Y
+	}
+
+	if t.Session.SelectedPos != nil && clickedPos == *t.Session.SelectedPos { // clicked already clicked, unselect
 		t.Session.SelectedPos = nil
 
 	} else if t.Session.SelectedPos == nil { // clicked with none selected, just select
-		_, ok := t.Session.Game.Board[t.Pos]
-		if ok && len(getLegalMoves(t.Session.Game, t.Pos)) > 0 {
-			t.Session.SelectedPos = &t.Pos
+		_, ok := t.Session.Game.Board[clickedPos]
+		if ok && len(getLegalMoves(t.Session.Game, clickedPos)) > 0 {
+			t.Session.SelectedPos = &clickedPos
 		}
 
 	} else if t.Session.SelectedPos != nil {
-		moveSuccessful := movePiece(t.Session.Game, *t.Session.SelectedPos, t.Pos, nil, true)
+		moveSuccessful := movePiece(t.Session.Game, *t.Session.SelectedPos, clickedPos, nil, true)
 		t.Session.SelectedPos = nil
-		_, ok := t.Session.Game.Board[t.Pos]
+		_, ok := t.Session.Game.Board[clickedPos]
 		if !moveSuccessful && ok {
-			t.Session.SelectedPos = &t.Pos
+			t.Session.SelectedPos = &clickedPos
 		}
 	}
 
@@ -68,7 +73,10 @@ func getPieceResource(piece Piece, resources Resources) fyne.Resource {
 	return resources.Pieces[piece.Type+piece.Colour*6]
 }
 
-func getSquareIndexFromPosition(pos Position) int {
+func getSquareIndexFromPosition(pos Position, turn int) int {
+	if turn == Black {
+		pos.Y = 7 - pos.Y
+	}
 	return pos.X + pos.Y*8
 }
 
@@ -82,7 +90,7 @@ func createWindowFromBoard(tinychess *TinyChess, w fyne.Window) ([]*PieceWidget,
 	}
 
 	for pos, piece := range tinychess.Game.Board {
-		squares[getSquareIndexFromPosition(pos)].SetResource(getPieceResource(piece, tinychess.Resources))
+		squares[getSquareIndexFromPosition(pos, tinychess.Game.Turn)].SetResource(getPieceResource(piece, tinychess.Resources))
 	}
 
 	// Why can't this be type cast instead?
@@ -109,17 +117,21 @@ func updateSquares(tinychess *TinyChess) {
 	}
 
 	for _, square := range tinychess.Squares {
-		piece, ok := tinychess.Game.Board[square.Pos]
+		piecePos := square.Pos
+		if tinychess.Game.Turn == Black {
+			piecePos.Y = 7 - piecePos.Y
+		}
+		piece, ok := tinychess.Game.Board[piecePos]
 		if ok {
 			square.SetResource(getPieceResource(piece, tinychess.Resources))
 		} else {
 			square.SetResource(tinychess.Resources.Empty)
 		}
 
-		if ok && tinychess.Game.Checkmate && piece.Type == King && piece.Colour == tinychess.Game.Turn {
-			tinychess.Overlay[getSquareIndexFromPosition(square.Pos)].SetResource(tinychess.Resources.CircleRed)
+		if ok && tinychess.Game.Checkmate && piece.Type == King && piece.Colour != tinychess.Game.Turn {
+			tinychess.Overlay[getSquareIndexFromPosition(square.Pos, tinychess.Game.Turn)].SetResource(tinychess.Resources.CircleRed)
 		} else if ok && tinychess.Game.Draw && piece.Type == King {
-			tinychess.Overlay[getSquareIndexFromPosition(square.Pos)].SetResource(tinychess.Resources.CircleGrey)
+			tinychess.Overlay[getSquareIndexFromPosition(square.Pos, tinychess.Game.Turn)].SetResource(tinychess.Resources.CircleGrey)
 		}
 	}
 
@@ -132,7 +144,7 @@ func updateSquares(tinychess *TinyChess) {
 				if isTakingPiece {
 					res = tinychess.Resources.CircleHole
 				}
-				tinychess.Overlay[getSquareIndexFromPosition(move.Pos)].SetResource(res)
+				tinychess.Overlay[getSquareIndexFromPosition(move.Pos, tinychess.Game.Turn)].SetResource(res)
 			}
 		}
 	}
